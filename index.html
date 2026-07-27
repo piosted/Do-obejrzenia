@@ -218,10 +218,13 @@ function fmt(sec){
   var p=function(n){return n<10?'0'+n:''+n};
   return h ? h+':'+p(m)+':'+p(s) : m+':'+p(s);
 }
-// akceptuje ID albo dowolny link zawierający list=
+// Akceptuje ID, link z list=, albo ID z doklejonymi śmieciami typu &si=...
+// Zwraca wyłącznie ciąg dozwolonych znaków od początku.
 function plainId(v){
   v=(v||'').trim();
-  var m=/[?&]list=([^&#]+)/.exec(v);
+  var m=/[?&]list=([A-Za-z0-9_-]+)/.exec(v);
+  if(m) return m[1];
+  m=/([A-Za-z0-9_-]+)/.exec(v.replace(/^list=/,''));
   return m ? m[1] : v;
 }
 function esc(t){
@@ -325,13 +328,18 @@ function showErr(msg){
   var el=$('#err');
   if(!msg){ el.hidden=true; return; }
   var hint='';
-  if(/API key not valid|API_KEY|forbidden|Forbidden/i.test(msg))
-    hint='<br><br>Sprawdź klucz API oraz to, czy YouTube Data API v3 jest włączone w Google Cloud. Jeśli ustawiłeś ograniczenie „HTTP referrer”, musi obejmować adres tej strony.';
+  if(/referer|referrer|blocked/i.test(msg))
+    hint='<br><br>Ograniczenie „Witryny” przy kluczu nie obejmuje adresu tej strony. Wpisz samo pochodzenie, bez nazwy repozytorium.';
+  else if(/Invalid Value|invalid/i.test(msg))
+    hint='<br><br>Najczęściej błędne ID playlisty. Ma zaczynać się od <b>PL</b> i nie zawierać niczego po <code>&amp;</code> — np. fragmentu <code>&amp;si=…</code> z linku „Udostępnij”.';
+  else if(/API key not valid|API_KEY|forbidden|Forbidden/i.test(msg))
+    hint='<br><br>Sprawdź klucz API oraz to, czy YouTube Data API v3 jest włączone w Google Cloud.';
   else if(/playlist|not found|404/i.test(msg))
     hint='<br><br>Sprawdź ID playlisty. Playlista musi być publiczna albo niepubliczna (prywatna nie zadziała bez logowania).';
   else if(/quota/i.test(msg))
     hint='<br><br>Wyczerpany dzienny limit API. Resetuje się o północy czasu pacyficznego.';
-  el.innerHTML='<b>Nie udało się pobrać playlisty.</b><br>'+esc(msg)+hint;
+  var used = cfg ? '<br><br>Użyte ID playlisty: <code>'+esc(cfg.pl)+'</code>' : '';
+  el.innerHTML='<b>Nie udało się pobrać playlisty.</b><br>'+esc(msg)+hint+used;
   el.hidden=false;
 }
 
