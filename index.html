@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Do obejrzenia">
+<meta name="theme-color" content="#0f0f0f">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Do obejrzenia</title>
+<style>
+:root{
+  --bg:#0f0f0f; --card:#1c1c1e; --card2:#26262a;
+  --fg:#f2f2f7; --muted:#8e8e93; --line:#2c2c2e;
+  --accent:#ff3b30; --ok:#30d158;
+  --safe-t:env(safe-area-inset-top,0px);
+  --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--fg)}
+body{
+  font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+  overscroll-behavior-y:contain;
+}
+button,input,select{font:inherit;color:inherit}
+button{background:none;border:0;padding:0;cursor:pointer}
+
+/* ---------- header ---------- */
+header{
+  position:sticky;top:0;z-index:20;
+  padding:calc(var(--safe-t) + 10px) 16px 8px;
+  background:rgba(15,15,15,.82);
+  backdrop-filter:saturate(180%) blur(20px);
+  -webkit-backdrop-filter:saturate(180%) blur(20px);
+  border-bottom:1px solid var(--line);
+}
+.hrow{display:flex;align-items:center;gap:12px}
+h1{font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0;flex:1}
+.icobtn{
+  width:36px;height:36px;border-radius:18px;background:var(--card);
+  display:flex;align-items:center;justify-content:center;flex:0 0 auto;
+}
+.icobtn svg{width:19px;height:19px;stroke:var(--fg);fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+.icobtn:active{background:var(--card2)}
+#refresh.spin svg{animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+.tabs{display:flex;gap:6px;margin-top:10px}
+.tab{
+  padding:6px 13px;border-radius:16px;background:var(--card);
+  font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap;
+}
+.tab.on{background:var(--fg);color:#000}
+.spacer{flex:1}
+.count{font-size:13px;color:var(--muted);align-self:center}
+
+/* ---------- list ---------- */
+main{padding:8px 12px calc(var(--safe-b) + 32px)}
+.card{
+  display:flex;gap:12px;padding:8px;border-radius:14px;
+  background:var(--card);margin-bottom:8px;align-items:flex-start;
+  transition:opacity .2s;
+}
+.card.done{opacity:.4}
+.thumb{
+  position:relative;flex:0 0 132px;aspect-ratio:16/9;
+  border-radius:9px;overflow:hidden;background:var(--card2);
+}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb:active{opacity:.7}
+.dur{
+  position:absolute;right:4px;bottom:4px;
+  background:rgba(0,0,0,.8);color:#fff;font-size:11px;font-weight:600;
+  padding:1px 4px;border-radius:4px;font-variant-numeric:tabular-nums;
+}
+.meta{flex:1;min-width:0;padding-top:1px}
+.title{
+  font-size:14px;font-weight:600;line-height:1.3;margin:0 0 3px;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+  overflow:hidden;
+}
+.chan{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.check{
+  flex:0 0 auto;align-self:center;width:44px;height:44px;
+  display:flex;align-items:center;justify-content:center;
+}
+.check .box{
+  width:25px;height:25px;border-radius:13px;border:2px solid var(--muted);
+  display:flex;align-items:center;justify-content:center;
+}
+.card.done .check .box{background:var(--ok);border-color:var(--ok)}
+.check svg{width:14px;height:14px;stroke:#000;fill:none;stroke-width:3;
+  stroke-linecap:round;stroke-linejoin:round;opacity:0}
+.card.done .check svg{opacity:1}
+
+/* ---------- states ---------- */
+.msg{text-align:center;color:var(--muted);padding:48px 24px;font-size:14px;line-height:1.6}
+.err{
+  margin:12px;padding:12px 14px;border-radius:12px;font-size:13px;line-height:1.5;
+  background:#3a1d1c;color:#ff9d97;border:1px solid #5c2b28;
+}
+.skel{height:83px;border-radius:14px;background:var(--card);margin-bottom:8px;
+  animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:.85}}
+
+/* ---------- setup / settings sheet ---------- */
+.sheet{
+  position:fixed;inset:0;z-index:50;background:var(--bg);
+  padding:calc(var(--safe-t) + 24px) 20px calc(var(--safe-b) + 24px);
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
+}
+.sheet[hidden]{display:none}
+.sheet h2{font-size:22px;margin:0 0 6px;letter-spacing:-.02em}
+.sheet p.sub{color:var(--muted);font-size:14px;margin:0 0 24px;line-height:1.5}
+label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:16px 0 6px}
+input[type=text]{
+  width:100%;padding:13px 14px;border-radius:11px;border:1px solid var(--line);
+  background:var(--card);font-size:16px;
+}
+input[type=text]:focus{outline:none;border-color:var(--muted)}
+.hint{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5}
+.toggle{
+  display:flex;align-items:center;gap:12px;margin-top:22px;
+  padding:14px;background:var(--card);border-radius:12px;
+}
+.toggle input{width:22px;height:22px;accent-color:var(--ok);flex:0 0 auto;margin:0}
+.toggle span{font-size:14px}
+.toggle small{display:block;color:var(--muted);font-size:12px;margin-top:3px}
+.btn{
+  display:block;width:100%;padding:15px;border-radius:12px;background:var(--fg);
+  color:#000;font-weight:600;font-size:16px;text-align:center;margin-top:24px;
+}
+.btn.ghost{background:var(--card);color:var(--fg);margin-top:10px}
+.btn.danger{background:var(--card);color:#ff6961;margin-top:10px}
+</style>
+</head>
+<body>
+
+<header id="hdr" hidden>
+  <div class="hrow">
+    <h1>Do obejrzenia</h1>
+    <button class="icobtn" id="refresh" aria-label="Odśwież">
+      <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+    </button>
+    <button class="icobtn" id="gear" aria-label="Ustawienia">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+  <div class="tabs">
+    <button class="tab on" data-view="todo">Do obejrzenia</button>
+    <button class="tab" data-view="done">Obejrzane</button>
+    <button class="tab" data-view="all">Wszystkie</button>
+    <span class="spacer"></span>
+    <span class="count" id="count"></span>
+  </div>
+</header>
+
+<div id="err" class="err" hidden></div>
+<main id="list"></main>
+
+<!-- ===== ustawienia / pierwsze uruchomienie ===== -->
+<section class="sheet" id="setup" hidden>
+  <h2 id="setupTitle">Konfiguracja</h2>
+  <p class="sub" id="setupSub">Podaj klucz API Google i ID playlisty. Zapisują się tylko na tym telefonie.</p>
+
+  <label for="apiKey">Klucz API (YouTube Data API v3)</label>
+  <input type="text" id="apiKey" placeholder="AIza..." autocapitalize="off" autocorrect="off" spellcheck="false">
+  <div class="hint">Google Cloud → API i usługi → Dane logowania → Klucz API.</div>
+
+  <label for="plId">ID playlisty</label>
+  <input type="text" id="plId" placeholder="PL... lub cały link do playlisty" autocapitalize="off" autocorrect="off" spellcheck="false">
+  <div class="hint">Możesz wkleić cały link — sam wyciągnę <code>list=</code>. Playlista musi być <b>niepubliczna</b> lub publiczna.</div>
+
+  <div class="toggle">
+    <input type="checkbox" id="brave" checked>
+    <span>Otwieraj filmy w Brave
+      <small>Wyłącz, jeśli wolisz Safari / aplikację YouTube.</small>
+    </span>
+  </div>
+
+  <button class="btn" id="save">Zapisz i wczytaj</button>
+  <button class="btn ghost" id="closeSetup" hidden>Anuluj</button>
+  <button class="btn danger" id="clearWatched" hidden>Wyczyść oznaczenia „obejrzane”</button>
+</section>
+
+<script>
+(function(){
+"use strict";
+
+var CFG='yt_cfg', CACHE='yt_cache', WATCH='yt_watched';
+var $=function(s){return document.querySelector(s)};
+
+function load(k,d){ try{ return JSON.parse(localStorage.getItem(k)) || d }catch(e){ return d } }
+function save(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)) }catch(e){} }
+
+var cfg     = load(CFG,null);
+var watched = load(WATCH,{});
+var items   = load(CACHE,[]);
+var view    = 'todo';
+var busy    = false;
+var lastOk  = 0;   // znacznik ostatniego udanego pobrania
+
+/* ---------- helpers ---------- */
+
+// PT1H2M3S -> 3723
+function isoSec(s){
+  var m=/^P(?:([\d.]+)D)?T?(?:([\d.]+)H)?(?:([\d.]+)M)?(?:([\d.]+)S)?$/.exec(s||'');
+  if(!m) return 0;
+  return (+m[1]||0)*86400 + (+m[2]||0)*3600 + (+m[3]||0)*60 + (+m[4]||0);
+}
+function fmt(sec){
+  if(!sec) return '';
+  var h=Math.floor(sec/3600), m=Math.floor(sec%3600/60), s=Math.floor(sec%60);
+  var p=function(n){return n<10?'0'+n:''+n};
+  return h ? h+':'+p(m)+':'+p(s) : m+':'+p(s);
+}
+// akceptuje ID albo dowolny link zawierający list=
+function plainId(v){
+  v=(v||'').trim();
+  var m=/[?&]list=([^&#]+)/.exec(v);
+  return m ? m[1] : v;
+}
+function esc(t){
+  return String(t).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+  });
+}
+function open_(id){
+  var url='https://www.youtube.com/watch?v='+id;
+  if(cfg && cfg.brave){
+    // Brave iOS: brave://open-url?url=<encoded>
+    window.location.href='brave://open-url?url='+encodeURIComponent(url);
+  }else{
+    window.open(url,'_blank');
+  }
+}
+
+/* ---------- API ---------- */
+
+function api(path,params){
+  var qs=Object.keys(params).filter(function(k){return params[k]})
+    .map(function(k){return k+'='+encodeURIComponent(params[k])}).join('&');
+  return fetch('https://www.googleapis.com/youtube/v3/'+path+'?'+qs+'&key='+encodeURIComponent(cfg.key))
+    .then(function(r){
+      return r.json().then(function(j){
+        if(!r.ok){
+          var e=(j.error&&j.error.message)||('HTTP '+r.status);
+          throw new Error(e);
+        }
+        return j;
+      });
+    });
+}
+
+function fetchAll(){
+  if(busy || !cfg) return Promise.resolve();
+  busy=true; $('#refresh').classList.add('spin'); showErr(null);
+
+  var out=[];
+  function page(token){
+    return api('playlistItems',{
+      part:'snippet,contentDetails', maxResults:50,
+      playlistId:cfg.pl, pageToken:token
+    }).then(function(d){
+      (d.items||[]).forEach(function(it){
+        var sn=it.snippet||{}, vid=(it.contentDetails||{}).videoId;
+        if(!vid) return;
+        var th=sn.thumbnails||{};
+        var t=th.medium||th.high||th.default||{};
+        out.push({
+          id:vid,
+          title:sn.title||'(bez tytułu)',
+          chan:sn.videoOwnerChannelTitle||sn.channelTitle||'',
+          thumb:t.url||'',
+          added:sn.publishedAt||'',
+          sec:0
+        });
+      });
+      return d.nextPageToken ? page(d.nextPageToken) : null;
+    });
+  }
+
+  // czasy trwania: /videos po 50 ID naraz
+  function durations(){
+    var chunks=[],i;
+    for(i=0;i<out.length;i+=50) chunks.push(out.slice(i,i+50));
+    return chunks.reduce(function(p,ch){
+      return p.then(function(){
+        return api('videos',{part:'contentDetails',id:ch.map(function(v){return v.id}).join(',')})
+          .then(function(d){
+            var map={};
+            (d.items||[]).forEach(function(v){ map[v.id]=isoSec(v.contentDetails.duration) });
+            ch.forEach(function(v){ v.sec=map[v.id]||0 });
+          });
+      });
+    },Promise.resolve());
+  }
+
+  return page(null)
+    .then(durations)
+    .then(function(){
+      // filmy usunięte na YT znikają; usuń też ich stan "obejrzane"
+      var live={}; out.forEach(function(v){ live[v.id]=1 });
+      Object.keys(watched).forEach(function(id){ if(!live[id]) delete watched[id] });
+      save(WATCH,watched);
+
+      items=out; save(CACHE,items); lastOk=Date.now(); render();
+    })
+    .catch(function(e){
+      showErr(e.message||String(e));
+      render();
+    })
+    .then(function(){
+      busy=false; $('#refresh').classList.remove('spin');
+    });
+}
+
+/* ---------- render ---------- */
+
+function showErr(msg){
+  var el=$('#err');
+  if(!msg){ el.hidden=true; return; }
+  var hint='';
+  if(/API key not valid|API_KEY|forbidden|Forbidden/i.test(msg))
+    hint='<br><br>Sprawdź klucz API oraz to, czy YouTube Data API v3 jest włączone w Google Cloud. Jeśli ustawiłeś ograniczenie „HTTP referrer”, musi obejmować adres tej strony.';
+  else if(/playlist|not found|404/i.test(msg))
+    hint='<br><br>Sprawdź ID playlisty. Playlista musi być publiczna albo niepubliczna (prywatna nie zadziała bez logowania).';
+  else if(/quota/i.test(msg))
+    hint='<br><br>Wyczerpany dzienny limit API. Resetuje się o północy czasu pacyficznego.';
+  el.innerHTML='<b>Nie udało się pobrać playlisty.</b><br>'+esc(msg)+hint;
+  el.hidden=false;
+}
+
+function render(){
+  $('#hdr').hidden=false;
+  var list=$('#list');
+  var shown=items.filter(function(v){
+    var w=!!watched[v.id];
+    return view==='all' ? true : view==='done' ? w : !w;
+  });
+
+  var secs=shown.reduce(function(a,v){return a+v.sec},0);
+  $('#count').textContent = shown.length
+    ? shown.length+' · '+Math.round(secs/60)+' min'
+    : '';
+
+  if(!items.length){
+    list.innerHTML='<p class="msg">Playlista jest pusta<br>albo jeszcze się nie wczytała.</p>';
+    return;
+  }
+  if(!shown.length){
+    list.innerHTML = view==='done'
+      ? '<p class="msg">Nic jeszcze nie oznaczyłeś jako obejrzane.</p>'
+      : '<p class="msg">Wszystko obejrzane. 🎉</p>';
+    return;
+  }
+
+  list.innerHTML = shown.map(function(v){
+    var w=watched[v.id]?' done':'';
+    return '<div class="card'+w+'" data-id="'+v.id+'">'+
+      '<div class="thumb" data-act="open">'+
+        (v.thumb?'<img loading="lazy" src="'+esc(v.thumb)+'" alt="">':'')+
+        (v.sec?'<span class="dur">'+fmt(v.sec)+'</span>':'')+
+      '</div>'+
+      '<div class="meta" data-act="open">'+
+        '<p class="title">'+esc(v.title)+'</p>'+
+        '<div class="chan">'+esc(v.chan)+'</div>'+
+      '</div>'+
+      '<button class="check" data-act="toggle" aria-label="Oznacz jako obejrzane">'+
+        '<span class="box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span>'+
+      '</button>'+
+    '</div>';
+  }).join('');
+}
+
+/* ---------- zdarzenia ---------- */
+
+$('#list').addEventListener('click',function(e){
+  var t=e.target.closest('[data-act]'); if(!t) return;
+  var card=t.closest('.card'), id=card.getAttribute('data-id');
+  if(t.getAttribute('data-act')==='open'){ open_(id); return; }
+  if(watched[id]) delete watched[id]; else watched[id]=Date.now();
+  save(WATCH,watched);
+  card.classList.toggle('done');
+  if(view!=='all') setTimeout(render,220); else render();
+});
+
+Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(b){
+  b.addEventListener('click',function(){
+    document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('on')});
+    b.classList.add('on'); view=b.getAttribute('data-view'); render();
+  });
+});
+
+$('#refresh').addEventListener('click',fetchAll);
+
+$('#gear').addEventListener('click',function(){
+  $('#setupTitle').textContent='Ustawienia';
+  $('#setupSub').textContent='Dane zapisane są wyłącznie na tym urządzeniu.';
+  $('#apiKey').value=cfg?cfg.key:'';
+  $('#plId').value=cfg?cfg.pl:'';
+  $('#brave').checked=cfg?!!cfg.brave:true;
+  $('#closeSetup').hidden=false;
+  $('#clearWatched').hidden=false;
+  $('#setup').hidden=false;
+});
+$('#closeSetup').addEventListener('click',function(){ $('#setup').hidden=true });
+
+$('#clearWatched').addEventListener('click',function(){
+  if(!confirm('Usunąć wszystkie oznaczenia „obejrzane”?')) return;
+  watched={}; save(WATCH,watched); render();
+});
+
+$('#save').addEventListener('click',function(){
+  var k=$('#apiKey').value.trim(), p=plainId($('#plId').value);
+  if(!k||!p){ alert('Uzupełnij oba pola.'); return; }
+  cfg={key:k, pl:p, brave:$('#brave').checked};
+  save(CFG,cfg);
+  $('#setup').hidden=true;
+  fetchAll();
+});
+
+/* ---------- start ---------- */
+
+if(!cfg){
+  $('#setup').hidden=false;
+}else{
+  render();          // natychmiast z pamięci podręcznej
+  fetchAll();        // i odświeżenie w tle
+}
+
+// odświeżenie przy powrocie do aplikacji (np. z Brave), ale nie częściej niż co 5 minut.
+// Przycisk odświeżania działa zawsze, bez ograniczeń.
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden || !cfg) return;
+  if(Date.now()-lastOk > 5*60*1000) fetchAll();
+});
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('sw.js').catch(function(){});
+  });
+}
+})();
+</script>
+</body>
+</html>
