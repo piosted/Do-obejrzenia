@@ -81,6 +81,24 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0;flex:1}
 .ghead span{font-size:12px;font-weight:400;color:var(--muted)}
 .ghead:first-child{padding-top:4px}
 
+/* ---------- pociągnij, aby odświeżyć ---------- */
+#pull{
+  height:0;overflow:hidden;
+  display:flex;align-items:flex-end;justify-content:center;
+  transition:height .25s cubic-bezier(.2,.8,.3,1);
+}
+#pull.drag{transition:none}
+.pi{
+  display:flex;align-items:center;gap:7px;padding-bottom:9px;
+  font-size:13px;color:var(--muted);white-space:nowrap;
+}
+.pi svg{
+  width:17px;height:17px;stroke:var(--muted);fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round;transition:transform .2s;
+}
+#pull.ready .pi svg{transform:rotate(180deg);stroke:var(--ok)}
+#pull.ready .pi{color:var(--ok)}
+
 /* ---------- list ---------- */
 main{padding:8px 12px calc(var(--safe-b) + 32px)}
 .card{
@@ -184,6 +202,8 @@ input[type=text]:focus{outline:none;border-color:var(--muted)}
     <button class="tab tchip on" data-topic="all">Wszystkie tematy <span class="n"></span></button>
     <button class="tab tchip" data-topic="t1">Technologia <span class="n"></span></button>
     <button class="tab tchip" data-topic="t2">AI <span class="n"></span></button>
+    <button class="tab tchip" data-topic="t3">OZE <span class="n"></span></button>
+    <button class="tab tchip" data-topic="t4">Gaming <span class="n"></span></button>
     <button class="tab tchip" data-topic="t0">Inne <span class="n"></span></button>
   </div>
   <div class="tabs durs" id="durs">
@@ -195,6 +215,11 @@ input[type=text]:focus{outline:none;border-color:var(--muted)}
     <button class="tab dchip" data-dur="b0">bez czasu <span class="n"></span></button>
   </div>
 </header>
+
+<div id="pull"><div class="pi">
+  <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+  <span>Pociągnij, aby odświeżyć</span>
+</div></div>
 
 <div id="err" class="err" hidden></div>
 <main id="list"></main>
@@ -225,8 +250,14 @@ input[type=text]:focus{outline:none;border-color:var(--muted)}
 
   <label for="kwAi">Własne słowa kluczowe — AI</label>
   <input type="text" id="kwAi" placeholder="np. agenci, rag, diffusion" autocapitalize="off" autocorrect="off" spellcheck="false">
-  <div class="hint">Oddzielaj przecinkami. Dopisują się do wbudowanych list; AI ma pierwszeństwo
-    przed technologią. Działają od razu, bez ponownego pobierania playlisty.</div>
+
+  <label for="kwOze">Własne słowa kluczowe — OZE</label>
+  <input type="text" id="kwOze" placeholder="np. taryfa, przyłącze, mikroinstalacja" autocapitalize="off" autocorrect="off" spellcheck="false">
+
+  <label for="kwGame">Własne słowa kluczowe — Gaming</label>
+  <input type="text" id="kwGame" placeholder="np. baldur, hollow knight, speedbieg" autocapitalize="off" autocorrect="off" spellcheck="false">
+  <div class="hint">Oddzielaj przecinkami. Dopisują się do wbudowanych list. Pierwszeństwo:
+    AI → OZE → Gaming → Technologia → Inne. Działają od razu, bez ponownego pobierania playlisty.</div>
 
   <button class="btn" id="save">Zapisz i wczytaj</button>
   <button class="btn ghost" id="copyLink" hidden>Skopiuj link konfiguracyjny</button>
@@ -280,11 +311,9 @@ var AI_RE = /(sztuczn\w*\s+inteligenc|machine\s*learning|uczeni\w+\s+maszynow|de
 
 var TECH_RE = /(technolog|programow|\bcoding\b|developer|software|hardware|komputer|computer|python|javascript|typescript|\breact\b|linux|windows|\bnvidia\b|procesor|\bcpu\b|\bgpu\b|serwer|\bapi\b|baza\s+danych|database|cyberbez|\bsecurity\b|hacking|elektronik|\brobot|startup|smartfon|smartphone|gadget|\bkod(?:owanie|zie|u)?\b)/i;
 
-var TOPICS=[
-  {id:'t1', label:'Technologia', chip:'Technologia'},
-  {id:'t2', label:'AI',          chip:'AI'},
-  {id:'t0', label:'Inne',        chip:'Inne'}
-];
+var OZE_RE = /(\boze\b|fotowoltaik|\bpv\b|panel\w*\s+s[łl]oneczn|kolektor\w*\s+s[łl]oneczn|\bsolar|farm\w*\s+wiatrow|turbin\w*\s+wiatrow|wiatrak|elektrowni|pompa\s+ciep[łl]a|pomp\w*\s+ciep[łl]|magazyn\w*\s+energii|energi\w*\s+odnawialn|odnawialn\w*\s+[źz]r[óo]d|prosument|net-?billing|falownik|inwerter|biogaz|biomas|geoterm|wod[óo]r\b|hydrogen|\bheat\s*pump|renewable|fotowolt)/i;
+
+var GAME_RE = /(gameplay|\bgaming\b|speedrun|walkthrough|let'?s\s*play|playstation|\bps[45]\b|xbox|nintendo|\bswitch\b|\bsteam\b|minecraft|fortnite|cyberpunk|\bgta\b|\brdr2?\b|red\s*dead|wied[źz]min|witcher|elden\s*ring|zelda|mario|fifa\s*\d|call\s*of\s*duty|counter-?strike|\bcs2\b|valorant|league\s*of\s*legends|\bdlc\b|\bnpc\b|\bboss\s*fight|poradnik\s+do\s+gry|przej[śs]cie\s+gry|\bgierk|gr[ay]\s+roku)/i;
 
 function userRe(key){                       // dodatkowe słowa z Ustawień
   var s=(cfg && cfg[key]||'').trim();
@@ -295,11 +324,16 @@ function userRe(key){                       // dodatkowe słowa z Ustawień
   return parts.length ? new RegExp(parts.join('|'),'i') : null;
 }
 
+// Kolejność sprawdzania = pierwszeństwo. Gaming przed technologią, żeby materiały
+// o grach nie wpadały do technologii przez wzmianki o GPU czy konsolach.
+// Kategorie YouTube: 20 = Gry, 28 = Nauka i technika.
 function topicOf(v){
   var t=(v.title+' '+v.chan+' '+(v.tags||''));
-  var ua=userRe('kwAi'), ut=userRe('kwTech');
-  if((ua && ua.test(t)) || AI_RE.test(t)) return 't2';
-  if((ut && ut.test(t)) || TECH_RE.test(t) || v.cat==='28') return 't1';
+  var u;
+  if(((u=userRe('kwAi'))   && u.test(t)) || AI_RE.test(t))                  return 't2';
+  if(((u=userRe('kwOze'))  && u.test(t)) || OZE_RE.test(t))                 return 't3';
+  if(((u=userRe('kwGame')) && u.test(t)) || GAME_RE.test(t) || v.cat==='20')return 't4';
+  if(((u=userRe('kwTech')) && u.test(t)) || TECH_RE.test(t) || v.cat==='28')return 't1';
   return 't0';
 }
 
@@ -605,6 +639,8 @@ $('#gear').addEventListener('click',function(){
   $('#brave').checked=cfg?!!cfg.brave:true;
   $('#kwTech').value=cfg&&cfg.kwTech||'';
   $('#kwAi').value=cfg&&cfg.kwAi||'';
+  $('#kwOze').value=cfg&&cfg.kwOze||'';
+  $('#kwGame').value=cfg&&cfg.kwGame||'';
   $('#closeSetup').hidden=false;
   $('#clearWatched').hidden=false;
   $('#copyLink').hidden=!cfg;
@@ -644,7 +680,8 @@ $('#save').addEventListener('click',function(){
   if(!k||!p){ alert('Uzupełnij oba pola.'); return; }
   var hadData = !!(cfg && items.length && cfg.pl===p && cfg.key===k);
   cfg={key:k, pl:p, brave:$('#brave').checked,
-       kwTech:$('#kwTech').value.trim(), kwAi:$('#kwAi').value.trim()};
+       kwTech:$('#kwTech').value.trim(), kwAi:$('#kwAi').value.trim(),
+       kwOze:$('#kwOze').value.trim(),   kwGame:$('#kwGame').value.trim()};
   save(CFG,cfg);
   $('#setup').hidden=true;
   // zmiana samych słów kluczowych nie wymaga pobierania playlisty na nowo
@@ -676,6 +713,46 @@ if(!cfg){
   render();          // natychmiast z pamięci podręcznej
   fetchAll();        // i odświeżenie w tle
 }
+
+/* ---------- pociągnięcie palcem w dół = odświeżenie ----------
+   iOS w trybie aplikacji nie ma paska adresu ani natywnego odświeżania,
+   więc gest trzeba obsłużyć samemu. Ruszamy tylko przy liście na samej górze. */
+(function(){
+  var el=$('#pull'), startY=0, dist=0, live=false;
+  var TRIG=64, MAX=92, OPOR=0.5;          // opór, żeby ciągnięcie było wyczuwalne
+
+  function reset(){
+    live=false; dist=0;
+    el.classList.remove('drag','ready');
+    el.style.height='';
+  }
+
+  document.addEventListener('touchstart',function(e){
+    if(e.touches.length!==1 || window.scrollY>0 || busy || !cfg) return;
+    if(!$('#setup').hidden) return;       // nie podczas ustawień
+    startY=e.touches[0].clientY; dist=0; live=true;
+    el.classList.add('drag');
+  },{passive:true});
+
+  document.addEventListener('touchmove',function(e){
+    if(!live) return;
+    dist=e.touches[0].clientY-startY;
+    if(dist<=0 || window.scrollY>0){ reset(); return; }
+    e.preventDefault();                   // blokuje gumowe odbicie strony
+    var h=Math.min(dist*OPOR,MAX);
+    el.style.height=h+'px';
+    el.classList.toggle('ready',h>=TRIG);
+  },{passive:false});
+
+  document.addEventListener('touchend',function(){
+    if(!live) return;
+    var go=Math.min(dist*OPOR,MAX)>=TRIG;
+    reset();
+    if(go) fetchAll();
+  });
+
+  document.addEventListener('touchcancel',reset);
+})();
 
 // odświeżenie przy powrocie do aplikacji (np. z Brave), ale nie częściej niż co 5 minut.
 // Przycisk odświeżania działa zawsze, bez ograniczeń.
