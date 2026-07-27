@@ -435,8 +435,10 @@ function render(){
     c.style.display = (id==='b0' && !n) ? 'none' : '';   // „bez czasu” tylko gdy jest potrzebny
   });
 
-  // 3. filtr długości
+  // 3. filtr długości + sortowanie od najkrótszych.
+  // Przedziały są ciągłe, więc jedno sortowanie porządkuje i sekcje, i listę płaską.
   var shown = dur==='all' ? base : base.filter(function(v){ return bucketOf(v.sec)===dur });
+  shown.sort(function(a,b){ return a.sec-b.sec });
 
   var secs=shown.reduce(function(a,v){return a+v.sec},0);
   $('#count').textContent = shown.length
