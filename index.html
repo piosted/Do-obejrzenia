@@ -58,6 +58,28 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0;flex:1}
 .spacer{flex:1}
 .count{font-size:13px;color:var(--muted);align-self:center}
 
+/* druga linia: przedziały długości — przewijalna w poziomie */
+.durs{
+  margin-top:6px;overflow-x:auto;scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;padding-bottom:2px;
+}
+.durs::-webkit-scrollbar{display:none}
+.dchip{font-size:13px;padding:5px 11px;font-weight:500}
+.dchip .n{
+  font-size:11px;color:var(--muted);margin-left:4px;
+  font-variant-numeric:tabular-nums;
+}
+.dchip.on .n{color:#555}
+.dchip .n:empty{margin-left:0}
+
+/* nagłówek sekcji długości */
+.ghead{
+  display:flex;align-items:baseline;gap:8px;
+  padding:14px 6px 7px;font-size:13px;font-weight:600;letter-spacing:.01em;
+}
+.ghead span{font-size:12px;font-weight:400;color:var(--muted)}
+.ghead:first-child{padding-top:4px}
+
 /* ---------- list ---------- */
 main{padding:8px 12px calc(var(--safe-b) + 32px)}
 .card{
@@ -157,6 +179,14 @@ input[type=text]:focus{outline:none;border-color:var(--muted)}
     <span class="spacer"></span>
     <span class="count" id="count"></span>
   </div>
+  <div class="tabs durs">
+    <button class="tab dchip on" data-dur="all">Każda długość <span class="n"></span></button>
+    <button class="tab dchip" data-dur="b1">1–5 min <span class="n"></span></button>
+    <button class="tab dchip" data-dur="b2">6–15 <span class="n"></span></button>
+    <button class="tab dchip" data-dur="b3">16–30 <span class="n"></span></button>
+    <button class="tab dchip" data-dur="b4">31+ <span class="n"></span></button>
+    <button class="tab dchip" data-dur="b0">bez czasu <span class="n"></span></button>
+  </div>
 </header>
 
 <div id="err" class="err" hidden></div>
@@ -205,8 +235,25 @@ var cfg     = load(CFG,null);
 var watched = load(WATCH,{});
 var items   = load(CACHE,[]);
 var view    = 'todo';
+var dur     = 'all';
 var busy    = false;
 var lastOk  = 0;   // znacznik ostatniego udanego pobrania
+
+// Przedziały długości. Kolejność decyduje o kolejności sekcji na liście.
+var BUCKETS=[
+  {id:'b1', label:'1–5 min'},
+  {id:'b2', label:'6–15 min'},
+  {id:'b3', label:'16–30 min'},
+  {id:'b4', label:'31 min i dłuższe'},
+  {id:'b0', label:'Bez informacji o czasie'}
+];
+function bucketOf(sec){
+  if(!sec)      return 'b0';
+  if(sec<=300)  return 'b1';
+  if(sec<=900)  return 'b2';
+  if(sec<=1800) return 'b3';
+  return 'b4';
+}
 
 /* ---------- helpers ---------- */
 
@@ -351,13 +398,45 @@ function showErr(msg){
   el.hidden=false;
 }
 
+function card(v){
+  var w=watched[v.id]?' done':'';
+  return '<div class="card'+w+'" data-id="'+v.id+'">'+
+    '<div class="thumb" data-act="open">'+
+      (v.thumb?'<img loading="lazy" src="'+esc(v.thumb)+'" alt="">':'')+
+      (v.sec?'<span class="dur">'+fmt(v.sec)+'</span>':'')+
+    '</div>'+
+    '<div class="meta" data-act="open">'+
+      '<p class="title">'+esc(v.title)+'</p>'+
+      '<div class="chan">'+esc(v.chan)+'</div>'+
+    '</div>'+
+    '<button class="check" data-act="toggle" aria-label="Oznacz jako obejrzane">'+
+      '<span class="box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span>'+
+    '</button>'+
+  '</div>';
+}
+
 function render(){
   $('#hdr').hidden=false;
   var list=$('#list');
-  var shown=items.filter(function(v){
+
+  // 1. filtr obejrzanych
+  var base=items.filter(function(v){
     var w=!!watched[v.id];
     return view==='all' ? true : view==='done' ? w : !w;
   });
+
+  // 2. liczniki na przyciskach długości
+  var counts={};
+  base.forEach(function(v){ var b=bucketOf(v.sec); counts[b]=(counts[b]||0)+1 });
+  Array.prototype.forEach.call(document.querySelectorAll('.dchip'),function(c){
+    var id=c.getAttribute('data-dur');
+    var n = id==='all' ? base.length : (counts[id]||0);
+    c.querySelector('.n').textContent = n || '';
+    c.style.display = (id==='b0' && !n) ? 'none' : '';   // „bez czasu” tylko gdy jest potrzebny
+  });
+
+  // 3. filtr długości
+  var shown = dur==='all' ? base : base.filter(function(v){ return bucketOf(v.sec)===dur });
 
   var secs=shown.reduce(function(a,v){return a+v.sec},0);
   $('#count').textContent = shown.length
@@ -369,28 +448,28 @@ function render(){
     return;
   }
   if(!shown.length){
-    list.innerHTML = view==='done'
-      ? '<p class="msg">Nic jeszcze nie oznaczyłeś jako obejrzane.</p>'
-      : '<p class="msg">Wszystko obejrzane. 🎉</p>';
+    list.innerHTML = dur!=='all'
+      ? '<p class="msg">Nic w tym przedziale długości.</p>'
+      : view==='done'
+        ? '<p class="msg">Nic jeszcze nie oznaczyłeś jako obejrzane.</p>'
+        : '<p class="msg">Wszystko obejrzane. 🎉</p>';
     return;
   }
 
-  list.innerHTML = shown.map(function(v){
-    var w=watched[v.id]?' done':'';
-    return '<div class="card'+w+'" data-id="'+v.id+'">'+
-      '<div class="thumb" data-act="open">'+
-        (v.thumb?'<img loading="lazy" src="'+esc(v.thumb)+'" alt="">':'')+
-        (v.sec?'<span class="dur">'+fmt(v.sec)+'</span>':'')+
-      '</div>'+
-      '<div class="meta" data-act="open">'+
-        '<p class="title">'+esc(v.title)+'</p>'+
-        '<div class="chan">'+esc(v.chan)+'</div>'+
-      '</div>'+
-      '<button class="check" data-act="toggle" aria-label="Oznacz jako obejrzane">'+
-        '<span class="box"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></span>'+
-      '</button>'+
-    '</div>';
-  }).join('');
+  // 4. bez filtra — dzielimy na sekcje; z filtrem — płaska lista
+  if(dur==='all'){
+    var html='';
+    BUCKETS.forEach(function(b){
+      var grp=shown.filter(function(v){ return bucketOf(v.sec)===b.id });
+      if(!grp.length) return;
+      var m=Math.round(grp.reduce(function(a,v){return a+v.sec},0)/60);
+      html+='<div class="ghead">'+b.label+'<span>'+grp.length+' · '+m+' min</span></div>'+
+            grp.map(card).join('');
+    });
+    list.innerHTML=html;
+  }else{
+    list.innerHTML=shown.map(card).join('');
+  }
 }
 
 /* ---------- zdarzenia ---------- */
@@ -405,10 +484,20 @@ $('#list').addEventListener('click',function(e){
   if(view!=='all') setTimeout(render,220); else render();
 });
 
-Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(b){
+Array.prototype.forEach.call(document.querySelectorAll('.tab[data-view]'),function(b){
   b.addEventListener('click',function(){
-    document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('on')});
+    Array.prototype.forEach.call(document.querySelectorAll('.tab[data-view]'),
+      function(x){x.classList.remove('on')});
     b.classList.add('on'); view=b.getAttribute('data-view'); render();
+  });
+});
+
+Array.prototype.forEach.call(document.querySelectorAll('.dchip'),function(b){
+  b.addEventListener('click',function(){
+    Array.prototype.forEach.call(document.querySelectorAll('.dchip'),
+      function(x){x.classList.remove('on')});
+    b.classList.add('on'); dur=b.getAttribute('data-dur');
+    render(); window.scrollTo(0,0);
   });
 });
 
