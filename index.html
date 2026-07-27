@@ -169,7 +169,8 @@ input[type=text]:focus{outline:none;border-color:var(--muted)}
 
   <label for="apiKey">Klucz API (YouTube Data API v3)</label>
   <input type="text" id="apiKey" placeholder="AIza..." autocapitalize="off" autocorrect="off" spellcheck="false">
-  <div class="hint">Google Cloud → API i usługi → Dane logowania → Klucz API.</div>
+  <div class="hint">Google Cloud → API i usługi → Dane logowania → Klucz API.<br>
+    Możesz też wkleić tutaj <b>link konfiguracyjny</b> z drugiego urządzenia — wypełni oba pola.</div>
 
   <label for="plId">ID playlisty</label>
   <input type="text" id="plId" placeholder="PL... lub cały link do playlisty" autocapitalize="off" autocorrect="off" spellcheck="false">
@@ -183,6 +184,9 @@ input[type=text]:focus{outline:none;border-color:var(--muted)}
   </div>
 
   <button class="btn" id="save">Zapisz i wczytaj</button>
+  <button class="btn ghost" id="copyLink" hidden>Skopiuj link konfiguracyjny</button>
+  <div class="hint" id="copyHint" hidden>Otwórz ten link na drugim urządzeniu — ustawienia
+    przeniosą się same, bez przepisywania klucza. Traktuj go jak hasło.</div>
   <button class="btn ghost" id="closeSetup" hidden>Anuluj</button>
   <button class="btn danger" id="clearWatched" hidden>Wyczyść oznaczenia „obejrzane”</button>
 </section>
@@ -232,10 +236,14 @@ function esc(t){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
   });
 }
+// Schemat brave:// działa tylko na iOS. Na komputerze przeglądarki blokują nawigację
+// do niego ze strony, więc tam otwieramy zwyczajnie — i tak jesteśmy już w Brave.
+var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+            (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+
 function open_(id){
   var url='https://www.youtube.com/watch?v='+id;
-  if(cfg && cfg.brave){
-    // Brave iOS: brave://open-url?url=<encoded>
+  if(cfg && cfg.brave && isIOS){
     window.location.href='brave://open-url?url='+encodeURIComponent(url);
   }else{
     window.open(url,'_blank');
@@ -414,7 +422,22 @@ $('#gear').addEventListener('click',function(){
   $('#brave').checked=cfg?!!cfg.brave:true;
   $('#closeSetup').hidden=false;
   $('#clearWatched').hidden=false;
+  $('#copyLink').hidden=!cfg;
+  $('#copyHint').hidden=!cfg;
   $('#setup').hidden=false;
+});
+
+$('#copyLink').addEventListener('click',function(){
+  if(!cfg) return;
+  var link=location.origin+location.pathname+
+    '#key='+encodeURIComponent(cfg.key)+'&pl='+encodeURIComponent(cfg.pl);
+  var done=function(){ $('#copyLink').textContent='Skopiowano ✓';
+    setTimeout(function(){ $('#copyLink').textContent='Skopiuj link konfiguracyjny' },1800); };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(link).then(done,function(){ prompt('Skopiuj ręcznie:',link) });
+  }else{
+    prompt('Skopiuj ręcznie:',link);
+  }
 });
 $('#closeSetup').addEventListener('click',function(){ $('#setup').hidden=true });
 
@@ -424,6 +447,14 @@ $('#clearWatched').addEventListener('click',function(){
 });
 
 $('#save').addEventListener('click',function(){
+  // W pole klucza można też wkleić cały link konfiguracyjny — wypełni oba pola naraz.
+  var raw=$('#apiKey').value.trim();
+  var mk=/[#&?]key=([^&\s]+)/.exec(raw);
+  if(mk){
+    $('#apiKey').value=decodeURIComponent(mk[1]);
+    var mp=/[#&?]pl=([^&\s]+)/.exec(raw);
+    if(mp) $('#plId').value=decodeURIComponent(mp[1]);
+  }
   var k=$('#apiKey').value.trim(), p=plainId($('#plId').value);
   if(!k||!p){ alert('Uzupełnij oba pola.'); return; }
   cfg={key:k, pl:p, brave:$('#brave').checked};
@@ -433,6 +464,23 @@ $('#save').addEventListener('click',function(){
 });
 
 /* ---------- start ---------- */
+
+// Konfiguracja przeniesiona linkiem: ...index.html#key=...&pl=...
+// Fragment po # nie trafia na serwer. Czyścimy adres zaraz po zapisaniu.
+(function(){
+  var h=location.hash.slice(1);
+  if(h.indexOf('key=')<0) return;
+  var p={};
+  h.split('&').forEach(function(kv){
+    var i=kv.indexOf('=');
+    if(i>0) p[kv.slice(0,i)]=decodeURIComponent(kv.slice(i+1));
+  });
+  if(p.key && p.pl){
+    cfg={key:p.key.trim(), pl:plainId(p.pl), brave:p.brave!=='0'};
+    save(CFG,cfg);
+  }
+  history.replaceState(null,'',location.pathname+location.search);
+})();
 
 if(!cfg){
   $('#setup').hidden=false;
