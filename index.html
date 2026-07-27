@@ -180,6 +180,12 @@ input[type=text]:focus{outline:none;border-color:var(--muted)}
     <span class="spacer"></span>
     <span class="count" id="count"></span>
   </div>
+  <div class="tabs durs" id="topics">
+    <button class="tab tchip on" data-topic="all">Wszystkie tematy <span class="n"></span></button>
+    <button class="tab tchip" data-topic="t1">Technologia <span class="n"></span></button>
+    <button class="tab tchip" data-topic="t2">AI <span class="n"></span></button>
+    <button class="tab tchip" data-topic="t0">Inne <span class="n"></span></button>
+  </div>
   <div class="tabs durs" id="durs">
     <button class="tab dchip on" data-dur="all">Każda długość <span class="n"></span></button>
     <button class="tab dchip" data-dur="b1">1–5 min <span class="n"></span></button>
@@ -214,6 +220,14 @@ input[type=text]:focus{outline:none;border-color:var(--muted)}
     </span>
   </div>
 
+  <label for="kwTech">Własne słowa kluczowe — Technologia</label>
+  <input type="text" id="kwTech" placeholder="np. druk 3d, arduino, raspberry" autocapitalize="off" autocorrect="off" spellcheck="false">
+
+  <label for="kwAi">Własne słowa kluczowe — AI</label>
+  <input type="text" id="kwAi" placeholder="np. agenci, rag, diffusion" autocapitalize="off" autocorrect="off" spellcheck="false">
+  <div class="hint">Oddzielaj przecinkami. Dopisują się do wbudowanych list; AI ma pierwszeństwo
+    przed technologią. Działają od razu, bez ponownego pobierania playlisty.</div>
+
   <button class="btn" id="save">Zapisz i wczytaj</button>
   <button class="btn ghost" id="copyLink" hidden>Skopiuj link konfiguracyjny</button>
   <div class="hint" id="copyHint" hidden>Otwórz ten link na drugim urządzeniu — ustawienia
@@ -237,6 +251,7 @@ var watched = load(WATCH,{});
 var items   = load(CACHE,[]);
 var view    = 'todo';
 var dur     = 'all';
+var topic   = 'all';
 var busy    = false;
 var lastOk  = 0;   // znacznik ostatniego udanego pobrania
 
@@ -254,6 +269,38 @@ function bucketOf(sec){
   if(sec<=900)  return 'b2';
   if(sec<=1800) return 'b3';
   return 'b4';
+}
+
+/* ---------- tematy ----------
+   Dopasowanie po tytule, nazwie kanału i tagach filmu. AI ma pierwszeństwo przed
+   technologią, bo materiały o AI prawie zawsze pasują też do niej.
+   Własne słowa dopiszesz w Ustawieniach — nie trzeba ruszać kodu.            */
+
+var AI_RE = /(sztuczn\w*\s+inteligenc|machine\s*learning|uczeni\w+\s+maszynow|deep\s*learning|sieci\s+neuronow|neural\s*net|\bllm\b|\bgpt\b|chatgpt|\bclaude\b|\bgemini\b|copilot|midjourney|stable\s*diffusion|openai|anthropic|hugging\s*face|generatywn|\bai\b)/i;
+
+var TECH_RE = /(technolog|programow|\bcoding\b|developer|software|hardware|komputer|computer|python|javascript|typescript|\breact\b|linux|windows|\bnvidia\b|procesor|\bcpu\b|\bgpu\b|serwer|\bapi\b|baza\s+danych|database|cyberbez|\bsecurity\b|hacking|elektronik|\brobot|startup|smartfon|smartphone|gadget|\bkod(?:owanie|zie|u)?\b)/i;
+
+var TOPICS=[
+  {id:'t1', label:'Technologia', chip:'Technologia'},
+  {id:'t2', label:'AI',          chip:'AI'},
+  {id:'t0', label:'Inne',        chip:'Inne'}
+];
+
+function userRe(key){                       // dodatkowe słowa z Ustawień
+  var s=(cfg && cfg[key]||'').trim();
+  if(!s) return null;
+  var parts=s.split(/[,;\n]+/).map(function(x){return x.trim()})
+             .filter(Boolean)
+             .map(function(x){return x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')});
+  return parts.length ? new RegExp(parts.join('|'),'i') : null;
+}
+
+function topicOf(v){
+  var t=(v.title+' '+v.chan+' '+(v.tags||''));
+  var ua=userRe('kwAi'), ut=userRe('kwTech');
+  if((ua && ua.test(t)) || AI_RE.test(t)) return 't2';
+  if((ut && ut.test(t)) || TECH_RE.test(t) || v.cat==='28') return 't1';
+  return 't0';
 }
 
 /* ---------- helpers ---------- */
@@ -343,17 +390,27 @@ function fetchAll(){
     });
   }
 
-  // czasy trwania: /videos po 50 ID naraz
+  // czasy trwania + dane do tematów: /videos po 50 ID naraz (1 jednostka na żądanie)
   function durations(){
     var chunks=[],i;
     for(i=0;i<out.length;i+=50) chunks.push(out.slice(i,i+50));
     return chunks.reduce(function(p,ch){
       return p.then(function(){
-        return api('videos',{part:'contentDetails',id:ch.map(function(v){return v.id}).join(',')})
+        return api('videos',{part:'contentDetails,snippet',
+                             id:ch.map(function(v){return v.id}).join(',')})
           .then(function(d){
             var map={};
-            (d.items||[]).forEach(function(v){ map[v.id]=isoSec(v.contentDetails.duration) });
-            ch.forEach(function(v){ v.sec=map[v.id]||0 });
+            (d.items||[]).forEach(function(v){
+              map[v.id]={
+                sec:isoSec(v.contentDetails.duration),
+                cat:(v.snippet&&v.snippet.categoryId)||'',
+                tags:((v.snippet&&v.snippet.tags)||[]).slice(0,15).join(' ')
+              };
+            });
+            ch.forEach(function(v){
+              var m=map[v.id]||{};
+              v.sec=m.sec||0; v.cat=m.cat||''; v.tags=m.tags||'';
+            });
           });
       });
     },Promise.resolve());
@@ -426,25 +483,39 @@ function render(){
     return view==='all' ? true : view==='done' ? w : !w;
   });
 
-  // Zakładka „Obejrzane” to historia — bez filtrowania i dzielenia na długości.
+  // Zakładka „Obejrzane” to historia — bez filtrów tematu i długości.
   var isDone = view==='done';
   $('#durs').hidden = isDone;
+  $('#topics').hidden = isDone;
 
-  // 2. liczniki na przyciskach długości
+  // 2. liczniki tematów (na podstawie samego filtra obejrzanych)
+  var tc={};
+  base.forEach(function(v){ var t=topicOf(v); tc[t]=(tc[t]||0)+1 });
+  Array.prototype.forEach.call(document.querySelectorAll('.tchip'),function(c){
+    var id=c.getAttribute('data-topic');
+    c.querySelector('.n').textContent = (id==='all' ? base.length : (tc[id]||0)) || '';
+  });
+
+  // 3. filtr tematu
+  var afterTopic = (isDone || topic==='all')
+    ? base
+    : base.filter(function(v){ return topicOf(v)===topic });
+
+  // 4. liczniki długości — już po zawężeniu tematem
   var counts={};
-  base.forEach(function(v){ var b=bucketOf(v.sec); counts[b]=(counts[b]||0)+1 });
+  afterTopic.forEach(function(v){ var b=bucketOf(v.sec); counts[b]=(counts[b]||0)+1 });
   Array.prototype.forEach.call(document.querySelectorAll('.dchip'),function(c){
     var id=c.getAttribute('data-dur');
-    var n = id==='all' ? base.length : (counts[id]||0);
+    var n = id==='all' ? afterTopic.length : (counts[id]||0);
     c.querySelector('.n').textContent = n || '';
     c.style.display = (id==='b0' && !n) ? 'none' : '';   // „bez czasu” tylko gdy jest potrzebny
   });
 
-  // 3. filtr długości + sortowanie.
+  // 5. filtr długości + sortowanie.
   // Przedziały są ciągłe, więc jedno sortowanie porządkuje i sekcje, i listę płaską.
   var shown = (isDone || dur==='all')
-    ? base
-    : base.filter(function(v){ return bucketOf(v.sec)===dur });
+    ? afterTopic
+    : afterTopic.filter(function(v){ return bucketOf(v.sec)===dur });
 
   shown.sort(isDone
     ? function(a,b){ return (watched[b.id]||0)-(watched[a.id]||0) }   // ostatnio obejrzane u góry
@@ -464,11 +535,13 @@ function render(){
       ? '<p class="msg">Nic jeszcze nie oznaczyłeś jako obejrzane.</p>'
       : dur!=='all'
         ? '<p class="msg">Nic w tym przedziale długości.</p>'
-        : '<p class="msg">Wszystko obejrzane. 🎉</p>';
+        : topic!=='all'
+          ? '<p class="msg">Nic w tym temacie.<br>Słowa kluczowe dopiszesz w Ustawieniach.</p>'
+          : '<p class="msg">Wszystko obejrzane. 🎉</p>';
     return;
   }
 
-  // 4. bez filtra — dzielimy na sekcje; w historii i z filtrem — płaska lista
+  // 6. bez filtra — dzielimy na sekcje; w historii i z filtrem — płaska lista
   if(!isDone && dur==='all'){
     var html='';
     BUCKETS.forEach(function(b){
@@ -513,6 +586,15 @@ Array.prototype.forEach.call(document.querySelectorAll('.dchip'),function(b){
   });
 });
 
+Array.prototype.forEach.call(document.querySelectorAll('.tchip'),function(b){
+  b.addEventListener('click',function(){
+    Array.prototype.forEach.call(document.querySelectorAll('.tchip'),
+      function(x){x.classList.remove('on')});
+    b.classList.add('on'); topic=b.getAttribute('data-topic');
+    render(); window.scrollTo(0,0);
+  });
+});
+
 $('#refresh').addEventListener('click',fetchAll);
 
 $('#gear').addEventListener('click',function(){
@@ -521,6 +603,8 @@ $('#gear').addEventListener('click',function(){
   $('#apiKey').value=cfg?cfg.key:'';
   $('#plId').value=cfg?cfg.pl:'';
   $('#brave').checked=cfg?!!cfg.brave:true;
+  $('#kwTech').value=cfg&&cfg.kwTech||'';
+  $('#kwAi').value=cfg&&cfg.kwAi||'';
   $('#closeSetup').hidden=false;
   $('#clearWatched').hidden=false;
   $('#copyLink').hidden=!cfg;
@@ -558,10 +642,13 @@ $('#save').addEventListener('click',function(){
   }
   var k=$('#apiKey').value.trim(), p=plainId($('#plId').value);
   if(!k||!p){ alert('Uzupełnij oba pola.'); return; }
-  cfg={key:k, pl:p, brave:$('#brave').checked};
+  var hadData = !!(cfg && items.length && cfg.pl===p && cfg.key===k);
+  cfg={key:k, pl:p, brave:$('#brave').checked,
+       kwTech:$('#kwTech').value.trim(), kwAi:$('#kwAi').value.trim()};
   save(CFG,cfg);
   $('#setup').hidden=true;
-  fetchAll();
+  // zmiana samych słów kluczowych nie wymaga pobierania playlisty na nowo
+  if(hadData) render(); else fetchAll();
 });
 
 /* ---------- start ---------- */
