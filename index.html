@@ -50,6 +50,7 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0;flex:1}
 @keyframes sp{to{transform:rotate(360deg)}}
 
 .tabs{display:flex;gap:6px;margin-top:10px}
+.tabs[hidden]{display:none}   /* bez tego display:flex wygrywa z atrybutem hidden */
 .tab{
   padding:6px 13px;border-radius:16px;background:var(--card);
   font-size:14px;font-weight:600;color:var(--muted);white-space:nowrap;
@@ -179,7 +180,7 @@ input[type=text]:focus{outline:none;border-color:var(--muted)}
     <span class="spacer"></span>
     <span class="count" id="count"></span>
   </div>
-  <div class="tabs durs">
+  <div class="tabs durs" id="durs">
     <button class="tab dchip on" data-dur="all">Każda długość <span class="n"></span></button>
     <button class="tab dchip" data-dur="b1">1–5 min <span class="n"></span></button>
     <button class="tab dchip" data-dur="b2">6–15 <span class="n"></span></button>
@@ -425,6 +426,10 @@ function render(){
     return view==='all' ? true : view==='done' ? w : !w;
   });
 
+  // Zakładka „Obejrzane” to historia — bez filtrowania i dzielenia na długości.
+  var isDone = view==='done';
+  $('#durs').hidden = isDone;
+
   // 2. liczniki na przyciskach długości
   var counts={};
   base.forEach(function(v){ var b=bucketOf(v.sec); counts[b]=(counts[b]||0)+1 });
@@ -435,10 +440,15 @@ function render(){
     c.style.display = (id==='b0' && !n) ? 'none' : '';   // „bez czasu” tylko gdy jest potrzebny
   });
 
-  // 3. filtr długości + sortowanie od najkrótszych.
+  // 3. filtr długości + sortowanie.
   // Przedziały są ciągłe, więc jedno sortowanie porządkuje i sekcje, i listę płaską.
-  var shown = dur==='all' ? base : base.filter(function(v){ return bucketOf(v.sec)===dur });
-  shown.sort(function(a,b){ return a.sec-b.sec });
+  var shown = (isDone || dur==='all')
+    ? base
+    : base.filter(function(v){ return bucketOf(v.sec)===dur });
+
+  shown.sort(isDone
+    ? function(a,b){ return (watched[b.id]||0)-(watched[a.id]||0) }   // ostatnio obejrzane u góry
+    : function(a,b){ return a.sec-b.sec });                            // od najkrótszych
 
   var secs=shown.reduce(function(a,v){return a+v.sec},0);
   $('#count').textContent = shown.length
@@ -450,16 +460,16 @@ function render(){
     return;
   }
   if(!shown.length){
-    list.innerHTML = dur!=='all'
-      ? '<p class="msg">Nic w tym przedziale długości.</p>'
-      : view==='done'
-        ? '<p class="msg">Nic jeszcze nie oznaczyłeś jako obejrzane.</p>'
+    list.innerHTML = isDone
+      ? '<p class="msg">Nic jeszcze nie oznaczyłeś jako obejrzane.</p>'
+      : dur!=='all'
+        ? '<p class="msg">Nic w tym przedziale długości.</p>'
         : '<p class="msg">Wszystko obejrzane. 🎉</p>';
     return;
   }
 
-  // 4. bez filtra — dzielimy na sekcje; z filtrem — płaska lista
-  if(dur==='all'){
+  // 4. bez filtra — dzielimy na sekcje; w historii i z filtrem — płaska lista
+  if(!isDone && dur==='all'){
     var html='';
     BUCKETS.forEach(function(b){
       var grp=shown.filter(function(v){ return bucketOf(v.sec)===b.id });
